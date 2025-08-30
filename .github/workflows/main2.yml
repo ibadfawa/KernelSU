@@ -45,12 +45,14 @@ jobs:
           if [ ! -d android-kernel/.repo ]; then
             echo "[+] Cache miss, fresh repo init..."
             mkdir android-kernel && cd android-kernel
-            repo init -u https://android.googlesource.com/kernel/manifest -b common-android14-6.1
+            repo init -u https://android.googlesource.com/kernel/manifest -b common-android14-6.1 --depth=1 --repo-rev=v2.16
           else
             echo "[+] Cache hit, repo already exists. Syncing..."
             cd android-kernel
           fi
-          repo sync -c -j$(nproc)
+          repo sync --trace -c -j$(nproc --all) --no-tags
+          
+          
 
       # 5. Save kernel repo cache (only if miss)
       - name: Save kernel repo cache
@@ -101,9 +103,18 @@ jobs:
           ./tools/bazel run //common:kernel_aarch64_abi_dist -- --dist_dir=out_abi
 
       # 9. Upload artifacts
-      - name: Upload kernel artifacts
+      - name: Upload kernel artifacts1
         uses: actions/upload-artifact@v4
         with:
           name: gki-android14-6.1
           path: |
-            android-kernel/out_abi/**
+            android-kernel/out_abi/Image.gz
+            android-kernel/out_abi/Image.gz
+
+      - name: Upload kernel artifacts2
+        uses: actions/upload-artifact@v4
+        with:
+          name: gki-android14-6.1
+          path: |
+            android-kernel/out_abi/boot-img.tar.gz
+            

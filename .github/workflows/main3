@@ -1,0 +1,120 @@
+name: Build GKI Android-14 (6.1) Kernel3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      # 1. Maksimalkan space
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      # 2. Install dependencies
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          #sudo apt-get install -y git curl openjdk-11-jdk python3 zip lz4 bc flex bison build-essential
+          git clone https://gerrit.googlesource.com/git-repo ~/bin/repo
+          sudo ln -sf ~/bin/repo/repo /usr/local/bin/repo
+
+      # 3. Restore kernel repo cache
+      - name: Restore kernel repo cache
+        id: repo-cache
+        uses: actions/cache@v4
+        with:
+          path: android-kernel
+          key: repo-${{ runner.os }}-android14-6.1
+
+      # 4. Sync kernel source
+      - name: Repo sync kernel
+        run: |
+          if [ ! -d android-kernel/.repo ]; then
+            echo "[+] Cache miss, fresh repo init..."
+            mkdir android-kernel && cd android-kernel
+            repo init -u https://android.googlesource.com/kernel/manifest -b common-android14-6.1 --depth=1 --repo-rev=v2.16
+          else
+            echo "[+] Cache hit, repo already exists. Syncing..."
+            cd android-kernel
+          fi
+          repo sync --trace -c -j$(nproc --all) --no-tags
+          
+          
+
+      # 5. Save kernel repo cache (only if miss)
+      - name: Save kernel repo cache
+        if: steps.repo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: android-kernel
+          key: repo-${{ runner.os }}-android14-6.1
+
+      # 6. Patch SELinux enforcing
+      - name: Patch SELinux enforcing
+        run: |
+          echo "[+] Applying SELinux enforcing -> false patch"
+          SECURITY_H=$(find android-kernel -path "*/security/selinux/include/security.h" | head -n1)
+          if [ -f "$SECURITY_H" ]; then
+            sed -i \
+              -e 's/return[[:space:]]\+READ_ONCE(state->enforcing);/return false;/' \
+              -e 's/return[[:space:]]\+true;/return false;/' \
+              "$SECURITY_H"
+            echo "[+] Patched: $SECURITY_H"
+          else
+            echo "[!] security.h not found!"
+          fi
+
+      # 7. Restore/setup ccache
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Save ccache
+        if: steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+
+      # 8. Build kernel via Bazel (Kleaf)
+      - name: Build GKI kernel
+        working-directory: android-kernel
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          ./tools/bazel build --config=fast //common:kernel_aarch64
+          ./tools/bazel run //common:kernel_aarch64_abi_dist -- --dist_dir=out_abi
+
+      # 9. Upload artifacts
+      - name: Upload kernel artifacts1
+        uses: actions/upload-artifact@v4
+        with:
+          name: gki-android14-6.1
+          path: |
+            android-kernel/out_abi/Image.gz
+            android-kernel/out_abi/Image.gz
+
+      - name: Upload kernel artifacts2
+        uses: actions/upload-artifact@v4
+        with:
+          name: gki-android14-6.1
+          path: |
+            android-kernel/out_abi/boot-img.tar.gz
+            

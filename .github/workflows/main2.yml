@@ -1,0 +1,79 @@
+name: Build GKI 6.1 with Cache and SELinux Patch
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git wget build-essential bc bison flex libssl-dev \
+            libncurses5-dev libncursesw5-dev python3
+          git clone https://gerrit.googlesource.com/git-repo ~/bin/repo
+          sudo ln -sf ~/bin/repo/repo /usr/local/bin/repo
+
+      - name: Restore repo cache
+        id: cache-repo
+        uses: actions/cache@v4
+        with:
+          path: kernel
+          key: repo-${{ runner.os }}-android14-6.1
+
+      - name: Setup kernel source
+        run: |
+          if [ ! -d kernel/.repo ]; then
+            echo "[+] No repo cache found, initializing..."
+            mkdir -p kernel && cd kernel
+            repo init --depth=1 -u https://android.googlesource.com/kernel/manifest -b common-android14-6.1-lts
+          else
+            echo "[+] Repo cache restored, syncing..."
+            cd kernel
+          fi
+          repo sync -c -j$(nproc) --no-tags --no-clone-bundle
+          echo "[+] Kernel source ready"
+
+      - name: Patch SELinux enforcing
+        run: |
+          SECURITY_H=$(find kernel -path "*/security/selinux/include/security.h" | head -n1)
+          if [ -f "$SECURITY_H" ]; then
+            sed -i \
+              -e 's/return[[:space:]]\+READ_ONCE(state->enforcing);/return false;/' \
+              -e 's/return[[:space:]]\+true;/return false;/' \
+              "$SECURITY_H"
+            echo "[+] Patched: $SECURITY_H"
+          else
+            echo "[!] security.h not found!"
+          fi
+
+      - name: Save repo cache
+        if: steps.cache-repo.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: kernel
+          key: repo-${{ runner.os }}-android14-6.1
+
+      - name: Build kernel
+        run: |
+          cd kernel
+          make ARCH=arm64 CC=clang O=out gki_defconfig
+          make ARCH=arm64 CC=clang O=out -j$(nproc)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gki-6.1-build
+          path: kernel/out/arch/arm64/boot/Image.gz

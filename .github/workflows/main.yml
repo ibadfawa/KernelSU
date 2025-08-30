@@ -40,6 +40,20 @@ jobs:
           repo init -u https://android.googlesource.com/kernel/manifest -b common-android14-6.1
           repo sync -c -j$(nproc)
 
+      
+      - name: Patch SELinux enforcing
+        run: |
+          echo "[+] Applying SELinux enforcing -> false patch"
+          SECURITY_H=$(find . -path "*/security/selinux/include/security.h" | head -n1)
+          if [ -f "$SECURITY_H" ]; then
+            sed -i \
+              -e 's/return[[:space:]]\+READ_ONCE(state->enforcing);/return false;/' \
+              -e 's/return[[:space:]]\+true;/return false;/' \
+              "$SECURITY_H"
+            echo "[+] Patched: $SECURITY_H"
+          else
+            echo "[!] security.h not found!"
+          fi
       # 4. Setup ccache (opsional, supaya build lebih cepat di run berikutnya)
       - name: Setup ccache
         uses: actions/cache@v3
@@ -66,5 +80,4 @@ jobs:
           name: gki-android14-6.1
           path: |
             android-kernel/bazel-bin/common/Image.lz4
-            android-kernel/bazel-bin/common/vmlinux
-            android-kernel/out_abi/**
+            

@@ -1,0 +1,67 @@
+name: Build GKI Android-14 (6.1) Kernel via Kleaf
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
+
+    steps:
+      # 1. Maksimalkan space (supaya muat repo sync + Bazel outputs)
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      # 2. Install dependencies (repo, Bazel, etc.)
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl openjdk-11-jdk repo python3 zip bazelisk lz4
+
+      # 3. Repo sync kernel source
+      - name: Sync kernel source
+        run: |
+          mkdir android-kernel && cd android-kernel
+          repo init -u https://android.googlesource.com/kernel/manifest -b common-android14-6.1
+          repo sync -c -j$(nproc)
+          echo "Sources synced"
+
+      # 4. Setup cache (opsional)
+      - name: Setup ccache
+        uses: actions/cache@v3
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      # 5. Build kernel menggunakan Kleaf/Bazel
+      - name: Build GKI kernel via Bazel
+        working-directory: android-kernel
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+          ln -sf "$(which bazelisk)" tools/bazel
+          ./tools/bazel build --config=fast //common:kernel_aarch64
+          ./tools/bazel run //common:kernel_aarch64_abi_dist -- --dist_dir=out_abi
+
+      # 6. Upload artifacts: kernel & ABI report
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gki-android14-6.1
+          path: |
+            android-kernel/bazel-bin/common/Image.lz4
+            android-kernel/bazel-bin/common/vmlinux
+            android-kernel/out_abi/kernel_aarch64_abi_dist/dist/abi.stg
+            android-kernel/out_abi/kernel_aarch64_abi_dist/abi_stgdiff/abi.report.short

@@ -106,4 +106,4 @@ jobs:
         with:
           name: gki-android14-6.1
           path: |
-            android-kernel/bazel-bin/common/Image.lz4
+            android-kernel/out_abi/**

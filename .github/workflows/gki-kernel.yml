@@ -111,6 +111,20 @@ jobs:
           repo --trace sync -c -j$(nproc --all) --no-tags
           df -h
 
+          # --- Patch SELinux enforcing_enabled() ---
+          echo "[+] Patching security/selinux/include/security.h"
+          SELINUX_FILE="security/selinux/include/security.h"
+
+          # pastikan file ada
+          if [ -f "$SELINUX_FILE" ]; then
+            sed -i 's/return[[:space:]]\+READ_ONCE(state->enforcing);/return false;/' "$SELINUX_FILE"
+            sed -i 's/return[[:space:]]\+true;/return false;/' "$SELINUX_FILE"
+            echo "[+] security.h patched!"
+          else
+            echo "[!] $SELINUX_FILE not found, skip patch."
+          fi
+
+
       - name: Setup KernelSU
         env:
           PATCH_PATH: ${{ inputs.patch_path }}

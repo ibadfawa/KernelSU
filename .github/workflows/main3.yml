@@ -50,7 +50,7 @@ jobs:
             echo "[+] Cache hit, repo already exists. Syncing..."
             cd android-kernel
           fi
-          repo sync --trace -c -j$(nproc --all) --no-tags
+          repo sync -c -j$(nproc --all) --no-tags
           
           
 

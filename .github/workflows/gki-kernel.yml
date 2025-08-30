@@ -99,12 +99,12 @@ jobs:
           cd $GITHUB_WORKSPACE
           sudo apt-get install repo -y
           mkdir android-kernel && cd android-kernel
-          repo init --depth=1 --u https://android.googlesource.com/kernel/manifest -b android14-6.1-lts --repo-rev=v2.16
-          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common android14-6.1-lts )
+          repo init --depth=1 --u https://android.googlesource.com/kernel/manifest -b common-android14-6.1-lts --repo-rev=v2.16
+          REMOTE_BRANCH=$(git ls-remote https://android.googlesource.com/kernel/common common-android14-6.1-lts )
           DEFAULT_MANIFEST_PATH=.repo/manifests/default.xml
           if grep -q deprecated <<< $REMOTE_BRANCH; then
             echo "Found deprecated branch: android14-6.1-lts"
-            #sed -i 's/"android14-6.1-lts"/"deprecated\/${{ inputs.tag }}"/g' $DEFAULT_MANIFEST_PATH
+            #sed -i 's/"common-android14-6.1-lts"/"deprecated\/${{ inputs.tag }}"/g' $DEFAULT_MANIFEST_PATH
             cat $DEFAULT_MANIFEST_PATH
           fi
           repo --version
@@ -115,7 +115,7 @@ jobs:
           
           # --- Patch SELinux enforcing_enabled() ---
           echo "[+] Patching security/selinux/include/security.h"
-          SELINUX_FILE="android14-6.1-lts/security/selinux/include/security.h"
+          SELINUX_FILE="android-kernel/security/selinux/include/security.h"
 
           # pastikan file ada
           if [ -f "$SELINUX_FILE" ]; then
